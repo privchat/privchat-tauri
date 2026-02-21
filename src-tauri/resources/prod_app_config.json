@@ -1,0 +1,8 @@
+{
+  "app_name": "PrivChat",
+  "environment": "prod",
+  "default_server_url": "tcp://127.0.0.1:9001",
+  "signup_url": "https://privchat.dev/signup",
+  "help_url": "https://privchat.dev/docs",
+  "feedback_url": "https://privchat.dev"
+}

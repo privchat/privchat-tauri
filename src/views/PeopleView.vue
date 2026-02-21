@@ -1,0 +1,1037 @@
+<template>
+  <div class="h-full flex flex-col">
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200 px-5 py-4">
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-semibold text-gray-900">{{ headerTitle }}</h1>
+        <button
+          v-if="headerActionText"
+          @click="handleHeaderAction"
+          :disabled="false"
+          class="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {{ headerActionText }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white border-b border-gray-200 px-5">
+      <div class="flex items-center justify-between">
+        <div class="flex">
+          <button
+            @click="activeTab = 'friends'"
+            :class="[
+              'py-3 px-2 text-sm font-medium transition-colors border-b-2',
+              activeTab === 'friends'
+                ? 'text-blue-500 border-blue-500'
+                : 'text-gray-500 hover:text-gray-700 border-transparent'
+            ]"
+          >
+            Friends
+          </button>
+          <button
+            @click="activeTab = 'groups'"
+            :class="[
+              'py-3 px-2 text-sm font-medium ml-6 transition-colors border-b-2',
+              activeTab === 'groups'
+                ? 'text-blue-500 border-blue-500'
+                : 'text-gray-500 hover:text-gray-700 border-transparent'
+            ]"
+          >
+            Groups
+          </button>
+          <button
+            @click="activeTab = 'blocked'"
+            :class="[
+              'py-3 px-2 text-sm font-medium ml-6 transition-colors border-b-2',
+              activeTab === 'blocked'
+                ? 'text-blue-500 border-blue-500'
+                : 'text-gray-500 hover:text-gray-700 border-transparent'
+            ]"
+          >
+            Blocked
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="flex-1 bg-gray-50 px-5 py-4 overflow-auto">
+      <!-- Friends Tab -->
+      <div v-if="activeTab === 'friends'">
+        <!-- Friends List -->
+        <div class="space-y-2">
+          <div v-if="loading" class="text-center py-16 text-gray-500">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          </div>
+
+          <div v-else-if="friends.length === 0" class="text-center py-16 text-gray-500">
+            No friends yet
+          </div>
+
+          <div v-else v-for="friend in friends" :key="friend.userId">
+            <!-- Friend Card -->
+            <div class="bg-white rounded-lg p-3 border border-gray-100 hover:shadow-sm transition-shadow">
+              <div class="flex items-center justify-between">
+                <!-- Left: Avatar and Info -->
+                <div class="flex items-center gap-2.5">
+                  <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center overflow-hidden">
+                    <img
+                      :src="getAvatarUrl(friend.avatar)"
+                      :alt="friend.remarkName || friend.nickName"
+                      class="w-full h-full object-cover"
+                      @error="onImageError"
+                    />
+                  </div>
+                  <div class="min-w-0">
+                    <div class="font-medium text-sm text-gray-900 truncate">{{ friend.remarkName || friend.nickName }}</div>
+                    <div class="text-xs text-gray-500">User ID: {{ friend.userId }}</div>
+                  </div>
+                </div>
+
+                <!-- Right: Menu Button -->
+                <div class="relative">
+                  <button
+                    @click.stop="toggleMenu(friend.userId)"
+                    class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <HeroIcon name="more-vertical" className="w-5 h-5" />
+                  </button>
+
+                  <!-- Dropdown Menu -->
+                  <div
+                    v-if="showMenu === friend.userId"
+                    v-click-outside="() => showMenu = null"
+                    @click.stop
+                    class="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-10"
+                  >
+                    <button
+                      @click.stop="handleChat(friend)"
+                      class="w-full px-4 py-2 text-center text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Chat
+                    </button>
+                    <button
+                      @click.stop="startEditingName(friend)"
+                      class="w-full px-4 py-2 text-center text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Edit Remark Name
+                    </button>
+                    <button
+                      @click.stop="handleRemoveFriend(friend)"
+                      class="w-full px-4 py-2 text-center text-red-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Remove Friend
+                    </button>
+                    <button
+                      @click.stop="handleBlock(friend)"
+                      class="w-full px-4 py-2 text-center text-red-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Block
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Edit Remark Name Interface -->
+            <div v-if="editingFriend === friend.userId" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-2">
+              <!-- Display Current Nickname -->
+              <div class="mb-3">
+                <p class="text-sm text-gray-600 mb-1">Current Nickname:</p>
+                <button
+                  @click="copyNickNameToInput(friend)"
+                  class="text-base font-medium text-blue-600 hover:text-blue-700 hover:underline cursor-pointer transition-colors text-left"
+                  title="Click to copy to input"
+                >
+                  {{ friend.nickName }}
+                </button>
+                <p class="text-xs text-gray-500 mt-1">Click nickname to copy it to the input below</p>
+              </div>
+
+              <!-- Input for Remark Name -->
+              <input
+                ref="editNameInput"
+                v-model="newFriendName"
+                @keydown.enter="(e: KeyboardEvent) => { if (justFinishedComposing) { justFinishedComposing = false; return; } if (!isComposing && !e.isComposing) saveNewName(friend) }"
+                @keydown.esc="cancelEditing"
+                @compositionstart="isComposing = true"
+                @compositionend="onCompositionEnd"
+                type="text"
+                placeholder="Enter remark name"
+                class="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+              />
+              <div class="flex gap-3">
+                <button
+                  @click="saveNewName(friend)"
+                  class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Save
+                </button>
+                <button
+                  @click="cancelEditing"
+                  class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Groups Tab -->
+      <div v-if="activeTab === 'groups'">
+        <!-- Groups List -->
+        <div class="space-y-2">
+          <div v-if="loading" class="text-center py-16 text-gray-500">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          </div>
+
+          <div v-else-if="groups.length === 0" class="text-center py-16 text-gray-500">
+            No groups yet. Create one to get started!
+          </div>
+
+          <div v-else v-for="group in groups" :key="group.groupId">
+            <!-- Group Card -->
+            <div class="bg-white rounded-lg p-3 border border-gray-100 hover:shadow-sm transition-shadow">
+              <div class="flex items-center justify-between">
+                <!-- Left: Avatar and Info -->
+                <div class="flex items-center gap-2.5">
+                  <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center overflow-hidden">
+                    <img
+                      v-if="group.avatar"
+                      :src="getAvatarUrl(group.avatar)"
+                      :alt="group.name"
+                      class="w-full h-full object-cover"
+                      @error="onImageError"
+                    />
+                    <HeroIcon v-else name="user-group" className="w-6 h-6 text-blue-500" />
+                  </div>
+                  <div class="min-w-0">
+                    <div class="font-medium text-sm text-gray-900 truncate">{{ getGroupDisplayName(group) }}</div>
+                  </div>
+                </div>
+
+                <!-- Right: Menu Button -->
+                <div class="relative">
+                  <button
+                    @click.stop="toggleMenu(group.groupId)"
+                    class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <HeroIcon name="more-vertical" className="w-5 h-5" />
+                  </button>
+
+                  <!-- Dropdown Menu -->
+                  <div
+                    v-if="showMenu === group.groupId"
+                    v-click-outside="() => showMenu = null"
+                    @click.stop
+                    class="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-10"
+                  >
+                    <button
+                      @click.stop="handleGroupChat(group)"
+                      class="w-full px-4 py-2 text-center text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Chat
+                    </button>
+                    <button
+                      @click.stop="openInviteMembersDialog(group)"
+                      class="w-full px-4 py-2 text-center text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Invite Members
+                    </button>
+                    <button
+                      @click.stop="openViewMembersDialog(group)"
+                      class="w-full px-4 py-2 text-center text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      View Members
+                    </button>
+                    <button
+                      @click.stop="openEditGroupDialog(group)"
+                      class="w-full px-4 py-2 text-center text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Edit Group Info
+                    </button>
+                    <button
+                      @click.stop="openLeaveGroupDialog(group)"
+                      class="w-full px-4 py-2 text-center text-red-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Leave Group
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Blocked Tab -->
+      <div v-if="activeTab === 'blocked'">
+        <!-- Blocked Users List -->
+        <div class="space-y-2">
+          <div v-if="loading" class="text-center py-16 text-gray-500">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          </div>
+
+          <div v-else-if="blockedUsers.length === 0" class="text-center py-16 text-gray-500">
+            No blocked users
+          </div>
+
+          <div v-else v-for="blockedUser in blockedUsers" :key="blockedUser.userId">
+            <!-- Blocked User Card -->
+            <div class="bg-white rounded-lg p-3 border border-gray-100 hover:shadow-sm transition-shadow">
+              <div class="flex items-center justify-between">
+                <!-- Left: Avatar and Info -->
+                <div class="flex items-center gap-2.5">
+                  <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden opacity-60">
+                    <img
+                      :src="getAvatarUrl(blockedUser.avatar)"
+                      :alt="blockedUser.remarkName || blockedUser.nickName"
+                      class="w-full h-full object-cover"
+                      @error="onImageError"
+                    />
+                  </div>
+                  <div class="min-w-0">
+                    <div class="font-medium text-sm text-gray-900 truncate">{{ blockedUser.remarkName || blockedUser.nickName }}</div>
+                    <div class="text-xs text-gray-500">User ID: {{ blockedUser.userId }}</div>
+                  </div>
+                </div>
+
+                <!-- Right: Menu Button -->
+                <div class="relative">
+                  <button
+                    @click.stop="toggleMenu(blockedUser.userId)"
+                    class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <HeroIcon name="more-vertical" className="w-5 h-5" />
+                  </button>
+
+                  <!-- Dropdown Menu -->
+                  <div
+                    v-if="showMenu === blockedUser.userId"
+                    v-click-outside="() => showMenu = null"
+                    @click.stop
+                    class="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-10"
+                  >
+                    <button
+                      @click.stop="handleUnblock(blockedUser)"
+                      class="w-full px-4 py-2 text-center text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Unblock
+                    </button>
+                    <button
+                      @click.stop="handleHide(blockedUser)"
+                      class="w-full px-4 py-2 text-center text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Hide
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Friend Tab -->
+      <div v-if="activeTab === 'add'" class="max-w-2xl mx-auto">
+        <div class="bg-white rounded-lg p-6 border border-gray-200">
+          <!-- Title -->
+          <h2 class="text-xl font-semibold text-gray-900 mb-4">Add New Friend</h2>
+          <p class="text-gray-600 mb-6">Enter a user ID to search and add friends</p>
+
+          <!-- Search Input -->
+          <div class="flex gap-3 mb-6">
+            <input
+              v-model="addFriendId"
+              @keydown.enter="(e: KeyboardEvent) => { if (justFinishedComposing) { justFinishedComposing = false; return; } if (!isComposing && !e.isComposing) searchUser() }"
+              @compositionstart="isComposing = true"
+              @compositionend="onCompositionEnd"
+              type="text"
+              placeholder="Enter user ID..."
+              class="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              @click="searchUser"
+              :disabled="searching"
+              class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-center disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Search
+            </button>
+          </div>
+
+          <!-- Search Result -->
+          <div v-if="searchedUser" class="border-t border-gray-200 pt-6">
+            <div class="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
+              <!-- Left: User Info -->
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center overflow-hidden">
+                  <img
+                    :src="getAvatarUrl(searchedUser.avatar)"
+                    :alt="searchedUser.remarkName || searchedUser.nickName"
+                    class="w-full h-full object-cover"
+                    @error="onImageError"
+                  />
+                </div>
+                <div>
+                  <div class="text-base font-semibold text-gray-900">{{ searchedUser.remarkName || searchedUser.nickName }}</div>
+                  <div class="text-sm text-gray-500">User ID: {{ searchedUser.userId }}</div>
+                </div>
+              </div>
+
+              <!-- Right: Add Button -->
+              <button
+                @click="openAddFriendDialog"
+                :disabled="adding"
+                class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add Friend
+              </button>
+            </div>
+          </div>
+
+          <!-- Search Error -->
+          <div v-if="searchError" class="border-t border-gray-200 pt-6">
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-600">
+              {{ searchError }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showAddFriendDialog"
+      class="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+      @click="closeAddFriendDialog"
+    >
+      <div class="bg-white w-[420px] max-w-[92vw] rounded-xl border border-gray-200 shadow-xl" @click.stop>
+        <div class="px-5 py-4 border-b border-gray-200">
+          <h3 class="text-base font-semibold text-gray-900">发送好友申请</h3>
+          <p class="text-xs text-gray-500 mt-1">给对方附上一句申请说明（可选）</p>
+        </div>
+        <div class="px-5 py-4">
+          <textarea
+            v-model="friendRequestMessage"
+            rows="4"
+            maxlength="120"
+            placeholder="我是 demo，想加你好友"
+            class="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div class="text-right text-xs text-gray-400 mt-1">{{ friendRequestMessage.length }}/120</div>
+        </div>
+        <div class="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+          <button
+            @click="closeAddFriendDialog"
+            class="px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            @click="submitAddFriendRequest"
+            :disabled="adding"
+            class="px-3 py-1.5 text-sm text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ adding ? '发送中...' : '发送申请' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div
+      v-if="showConfirmModal"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      @click="closeConfirmModal"
+    >
+      <div
+        class="bg-white rounded-xl p-6 m-4 min-w-80 max-w-md"
+        @click.stop
+      >
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">{{ confirmAction?.title }}</h3>
+        <p class="text-gray-600 mb-6">{{ confirmAction?.message }}</p>
+        <div class="flex justify-end space-x-3">
+          <button
+            @click="closeConfirmModal"
+            :disabled="isProcessing"
+            class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="confirmAction?.callback"
+            :disabled="isProcessing"
+            class="px-4 py-2 text-sm rounded-lg transition-colors disabled:opacity-50"
+            :class="confirmAction?.dangerous
+              ? 'bg-red-600 text-white hover:bg-red-700'
+              : 'bg-blue-500 text-white hover:bg-blue-600'"
+          >
+            {{ isProcessing ? 'Processing...' : confirmAction?.confirmText }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Group Dialogs -->
+    <CreateGroupDialog
+      :is-open="isCreateGroupDialogOpen"
+      :friends="friends"
+      :current-user-id="currentUserId"
+      @close="closeCreateGroupDialog"
+      @success="handleGroupCreated"
+    />
+
+    <InviteMembersDialog
+      :is-open="isInviteMembersDialogOpen"
+      :group-id="selectedGroup?.groupId || ''"
+      :group-name="selectedGroup?.name || ''"
+      :group-avatar="selectedGroup?.avatar || null"
+      :friends="friends"
+      :current-user-id="currentUserId"
+      @close="closeInviteMembersDialog"
+      @success="closeInviteMembersDialog"
+    />
+
+    <ViewMembersDialog
+      :is-open="isViewMembersDialogOpen"
+      :group-id="selectedGroup?.groupId || ''"
+      @close="closeViewMembersDialog"
+    />
+
+    <EditGroupDialog
+      :is-open="isEditGroupDialogOpen"
+      :group-id="selectedGroup?.groupId || ''"
+      :group-name="selectedGroup?.name || ''"
+      :group-avatar="selectedGroup?.avatar"
+      :current-user-id="currentUserId"
+      @close="closeEditGroupDialog"
+      @success="closeEditGroupDialog"
+    />
+
+    <LeaveGroupDialog
+      :is-open="isLeaveGroupDialogOpen"
+      :group-id="selectedGroup?.groupId || ''"
+      :group-name="selectedGroup?.name || ''"
+      @close="closeLeaveGroupDialog"
+      @success="handleLeaveGroupSuccess"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, nextTick, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import type { RelationUser } from '../types/relations';
+import HeroIcon from '../components/shared/HeroIcon.vue';
+import { useRelationsDisplay } from '../composables/useRelationsDisplay';
+import { useRelationActions } from '../composables/useRelationActions';
+import { useChatDisplay } from '../composables/chat/useChatDisplay';
+import { useGroupsDisplay, type GroupDisplayItem } from '../composables/useGroupsDisplay';
+import { useUserProfileDisplay } from '../composables/useUserProfileDisplay';
+import { useGroupMembersCache } from '../composables/chat/useGroupMembersCache';
+import CreateGroupDialog from '../components/chat/CreateGroupDialog.vue';
+import InviteMembersDialog from '../components/group/InviteMembersDialog.vue';
+import ViewMembersDialog from '../components/group/ViewMembersDialog.vue';
+import EditGroupDialog from '../components/group/EditGroupDialog.vue';
+import LeaveGroupDialog from '../components/group/LeaveGroupDialog.vue';
+import defaultAvatarUrl from '../assets/default-avatar.svg';
+
+// Define component name for KeepAlive
+defineOptions({
+  name: 'PeopleView'
+});
+
+type TabType = 'friends' | 'groups' | 'blocked' | 'add';
+
+// Router
+const router = useRouter();
+
+// Local UI state
+const activeTab = ref<TabType>('friends');
+const addFriendId = ref('');
+const searchedUser = ref<RelationUser | null>(null);
+const searchError = ref<string | null>(null);
+const searching = ref(false);
+const adding = ref(false);
+const showAddFriendDialog = ref(false);
+const friendRequestMessage = ref('');
+const showMenu = ref<string | null>(null);
+const editingFriend = ref<string | null>(null);
+const newFriendName = ref('');
+const editNameInput = ref<HTMLInputElement | null>(null);
+const isComposing = ref(false);
+const justFinishedComposing = ref(false);
+const onCompositionEnd = () => {
+  isComposing.value = false;
+  justFinishedComposing.value = true;
+};
+
+const headerTitle = computed(() => {
+  switch (activeTab.value) {
+    case 'friends':
+      return 'Friends';
+    case 'groups':
+      return 'Groups';
+    case 'blocked':
+      return 'Blocked';
+    case 'add':
+      return 'Add Friend';
+    default:
+      return 'People';
+  }
+});
+
+const headerActionText = computed(() => {
+  switch (activeTab.value) {
+    case 'friends':
+      return 'Add Friend';
+    case 'groups':
+      return 'Create Group';
+    default:
+      return '';
+  }
+});
+
+const handleHeaderAction = () => {
+  if (activeTab.value === 'groups') {
+    openCreateGroupDialog();
+    return;
+  }
+  if (activeTab.value === 'friends') {
+    activeTab.value = 'add';
+  }
+};
+
+// Confirmation modal state
+const showConfirmModal = ref(false);
+const isProcessing = ref(false);
+const confirmAction = ref<{
+  title: string;
+  message: string;
+  confirmText: string;
+  dangerous: boolean;
+  callback: () => void;
+} | null>(null);
+
+// Use composables
+const {
+  friends,
+  blockedUsers,
+  relationsMap,
+  loading,
+} = useRelationsDisplay();
+
+const {
+  getUserProfileById,
+  addFriend,
+  updateFriendRemarkName,
+  blockUser,
+  removeFriend,
+  unblockUser,
+  hideBlockedUser,
+} = useRelationActions();
+
+// User profile
+const { userProfile } = useUserProfileDisplay();
+const currentUserId = computed(() => userProfile.value?.userId || '');
+
+// Chat display for groups (need conversations to filter groups)
+const { conversations } = useChatDisplay(relationsMap, currentUserId);
+
+// Groups display
+const {
+  groups,
+} = useGroupsDisplay(conversations);
+
+// Group members cache for member count display
+const { fetchGroupMembers, getGroupMemberCount, useGroupMemberChangeListener } = useGroupMembersCache();
+
+// Listen for group member changes (join/leave) and auto-refresh cache
+useGroupMemberChangeListener();
+
+// Prefetch group members when groups change
+watch(groups, (newGroups) => {
+  if (newGroups.length > 0) {
+    console.log('[PeopleView] Prefetching members for', newGroups.length, 'groups');
+    newGroups.forEach(group => {
+      fetchGroupMembers(group.groupId).catch(err => {
+        console.warn('[PeopleView] Failed to prefetch members for group:', group.groupId, err);
+      });
+    });
+  }
+}, { immediate: true });
+
+// Get group display name with member count
+function getGroupDisplayName(group: GroupDisplayItem): string {
+  const memberCount = getGroupMemberCount(group.groupId);
+  if (memberCount !== undefined) {
+    return `${group.name}(${memberCount})`;
+  }
+  return group.name;
+}
+
+// Group dialog states
+const isCreateGroupDialogOpen = ref(false);
+const isInviteMembersDialogOpen = ref(false);
+const isViewMembersDialogOpen = ref(false);
+const isEditGroupDialogOpen = ref(false);
+const isLeaveGroupDialogOpen = ref(false);
+const selectedGroup = ref<GroupDisplayItem | null>(null);
+
+// Group dialog handlers
+function openCreateGroupDialog() {
+  isCreateGroupDialogOpen.value = true;
+}
+
+function closeCreateGroupDialog() {
+  isCreateGroupDialogOpen.value = false;
+}
+
+function handleGroupCreated(groupId: string) {
+  console.log('[PeopleView] Group created:', groupId);
+  setTimeout(() => {
+    closeCreateGroupDialog();
+  }, 1000);
+}
+
+function openInviteMembersDialog(group: GroupDisplayItem) {
+  selectedGroup.value = group;
+  showMenu.value = null;
+  isInviteMembersDialogOpen.value = true;
+}
+
+function closeInviteMembersDialog() {
+  isInviteMembersDialogOpen.value = false;
+  selectedGroup.value = null;
+}
+
+function openViewMembersDialog(group: GroupDisplayItem) {
+  selectedGroup.value = group;
+  showMenu.value = null;
+  isViewMembersDialogOpen.value = true;
+}
+
+function closeViewMembersDialog() {
+  isViewMembersDialogOpen.value = false;
+  selectedGroup.value = null;
+}
+
+function openEditGroupDialog(group: GroupDisplayItem) {
+  selectedGroup.value = group;
+  showMenu.value = null;
+  isEditGroupDialogOpen.value = true;
+}
+
+function closeEditGroupDialog() {
+  isEditGroupDialogOpen.value = false;
+  selectedGroup.value = null;
+}
+
+function openLeaveGroupDialog(group: GroupDisplayItem) {
+  selectedGroup.value = group;
+  showMenu.value = null;
+  isLeaveGroupDialogOpen.value = true;
+}
+
+function closeLeaveGroupDialog() {
+  isLeaveGroupDialogOpen.value = false;
+  selectedGroup.value = null;
+}
+
+function handleLeaveGroupSuccess() {
+  console.log('[PeopleView] Left group successfully');
+}
+
+// Navigate to group chat
+function handleGroupChat(group: GroupDisplayItem) {
+  showMenu.value = null;
+  router.push({
+    path: '/chat',
+    query: { conversationId: group.conversationId }
+  });
+}
+
+// Avatar handling
+const getAvatarUrl = (avatarPath?: string) => {
+  if (!avatarPath) return defaultAvatarUrl;
+  if (avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) {
+    return avatarPath;
+  }
+  return `asset://localhost/${avatarPath}`;
+};
+
+const onImageError = (event: Event) => {
+  const img = event.target as HTMLImageElement;
+  if (img.src !== defaultAvatarUrl) {
+    img.src = defaultAvatarUrl;
+  }
+};
+
+// Menu handling
+const toggleMenu = (userId: string) => {
+  showMenu.value = showMenu.value === userId ? null : userId;
+};
+
+// Friends actions
+const handleChat = (friend: RelationUser) => {
+  showMenu.value = null;
+  // Navigate to chat view with userId query parameter
+  router.push({
+    path: '/chat',
+    query: { userId: friend.userId }
+  });
+};
+
+const startEditingName = (friend: RelationUser) => {
+  editingFriend.value = friend.userId;
+  newFriendName.value = friend.remarkName || friend.nickName || '';
+  showMenu.value = null;
+
+  nextTick(() => {
+    if (editNameInput.value) {
+      editNameInput.value.focus();
+    }
+  });
+};
+
+const copyNickNameToInput = (friend: RelationUser) => {
+  newFriendName.value = friend.nickName;
+  nextTick(() => {
+    if (editNameInput.value) {
+      editNameInput.value.focus();
+    }
+  });
+};
+
+const saveNewName = async (friend: RelationUser) => {
+  if (!newFriendName.value.trim()) {
+    cancelEditing();
+    return;
+  }
+
+  try {
+    await updateFriendRemarkName(friend.userId, newFriendName.value.trim());
+    cancelEditing();
+  } catch (err) {
+    console.error('Failed to update friend name:', err);
+  }
+};
+
+const cancelEditing = () => {
+  editingFriend.value = null;
+  newFriendName.value = '';
+};
+
+// Confirmation modal helpers
+const showConfirmationModal = (
+  title: string,
+  message: string,
+  confirmText: string,
+  dangerous: boolean,
+  callback: () => void
+) => {
+  confirmAction.value = {
+    title,
+    message,
+    confirmText,
+    dangerous,
+    callback
+  };
+  showConfirmModal.value = true;
+};
+
+const closeConfirmModal = () => {
+  showConfirmModal.value = false;
+  confirmAction.value = null;
+};
+
+const handleRemoveFriend = (friend: RelationUser) => {
+  showMenu.value = null;
+
+  showConfirmationModal(
+    'Remove Friend',
+    `Are you sure you want to remove ${friend.remarkName || friend.nickName} from your friends list?`,
+    'Remove',
+    true,
+    async () => {
+      if (isProcessing.value) return;
+      isProcessing.value = true;
+
+      try {
+        await removeFriend(friend.userId);
+        closeConfirmModal();
+      } catch (err) {
+        console.error('Failed to remove friend:', err);
+      } finally {
+        isProcessing.value = false;
+      }
+    }
+  );
+};
+
+const handleBlock = (friend: RelationUser) => {
+  showMenu.value = null;
+
+  showConfirmationModal(
+    'Block User',
+    `Are you sure you want to block ${friend.remarkName || friend.nickName}? They will be moved to your blocked list and won't be able to message you.`,
+    'Block',
+    true,
+    async () => {
+      if (isProcessing.value) return;
+      isProcessing.value = true;
+
+      try {
+        await blockUser(friend.userId, friend.remarkName || friend.nickName);
+        closeConfirmModal();
+      } catch (err) {
+        console.error('Failed to block user:', err);
+      } finally {
+        isProcessing.value = false;
+      }
+    }
+  );
+};
+
+// Blocked actions
+const handleUnblock = (user: RelationUser) => {
+  showMenu.value = null;
+
+  showConfirmationModal(
+    'Unblock User',
+    `Are you sure you want to unblock ${user.remarkName || user.nickName}?
+
+Note: If this user was originally your friend, they will be restored to your friends list. Otherwise, they will simply be removed from your blocked list.`,
+    'Unblock',
+    false,
+    async () => {
+      if (isProcessing.value) return;
+      isProcessing.value = true;
+
+      try {
+        await unblockUser(user.userId);
+        closeConfirmModal();
+      } catch (err) {
+        console.error('Failed to unblock user:', err);
+      } finally {
+        isProcessing.value = false;
+      }
+    }
+  );
+};
+
+const handleHide = (user: RelationUser) => {
+  showMenu.value = null;
+
+  showConfirmationModal(
+    'Hide User',
+    `Are you sure you want to hide ${user.remarkName || user.nickName}? They will be permanently removed from your blocked list.`,
+    'Hide',
+    true,
+    async () => {
+      if (isProcessing.value) return;
+      isProcessing.value = true;
+
+      try {
+        await hideBlockedUser(user.userId);
+        closeConfirmModal();
+      } catch (err) {
+        console.error('Failed to hide user:', err);
+      } finally {
+        isProcessing.value = false;
+      }
+    }
+  );
+};
+
+// Add friend actions
+const searchUser = async () => {
+  if (!addFriendId.value.trim()) {
+    return;
+  }
+
+  searching.value = true;
+  searchError.value = null;
+  searchedUser.value = null;
+
+  try {
+    const result = await getUserProfileById(addFriendId.value.trim());
+    console.log('Search result:', result);
+    searchedUser.value = result;
+  } catch (err) {
+    console.error('Failed to search user:', err);
+    searchError.value = 'User not found. Please check the user ID and try again.';
+  } finally {
+    searching.value = false;
+  }
+};
+
+const addNewFriend = async () => {
+  if (!searchedUser.value) {
+    return;
+  }
+
+  adding.value = true;
+
+  try {
+    await addFriend(searchedUser.value.userId, friendRequestMessage.value.trim() || undefined);
+    // Clear search
+    addFriendId.value = '';
+    searchedUser.value = null;
+    searchError.value = null;
+    friendRequestMessage.value = '';
+    // Switch to friends tab
+    activeTab.value = 'friends';
+  } catch (err) {
+    console.error('Failed to add friend:', err);
+    searchError.value = 'Failed to add friend. Please try again.';
+  } finally {
+    adding.value = false;
+  }
+};
+
+const openAddFriendDialog = () => {
+  if (!searchedUser.value || adding.value) {
+    return;
+  }
+  showAddFriendDialog.value = true;
+};
+
+const closeAddFriendDialog = () => {
+  if (adding.value) {
+    return;
+  }
+  showAddFriendDialog.value = false;
+};
+
+const submitAddFriendRequest = async () => {
+  await addNewFriend();
+  if (!searchError.value) {
+    showAddFriendDialog.value = false;
+  }
+};
+
+// Click outside directive
+interface HTMLElementWithClickOutside extends HTMLElement {
+  clickOutsideEvent?: (event: Event) => void;
+}
+
+const vClickOutside = {
+  mounted(el: HTMLElementWithClickOutside, binding: any) {
+    el.clickOutsideEvent = (event: Event) => {
+      if (!(el === event.target || el.contains(event.target as Node))) {
+        binding.value();
+      }
+    };
+    document.addEventListener('click', el.clickOutsideEvent);
+  },
+  unmounted(el: HTMLElementWithClickOutside) {
+    if (el.clickOutsideEvent) {
+      document.removeEventListener('click', el.clickOutsideEvent);
+    }
+  }
+};
+</script>
