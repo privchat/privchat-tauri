@@ -434,7 +434,8 @@ function buildOptimisticMessage(input: OptimisticMessageInput): Message {
     conversationId: input.conversationId,
     senderId: input.senderId,
     sendTimestamp: Date.now(),
-    messageType: 1,
+    // ContentMessageType.Text = 0（按业务优先级编号，对齐 privchat_protocol）
+    messageType: 0,
     text: input.content,
     groupId: input.groupId || undefined,
   };
